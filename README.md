@@ -124,6 +124,203 @@ For local development or Redis management tools (RedisInsight, Another Redis Des
 | **Replication**      | Async replication with configurable lag    |
 | **Security**         | Password authentication enabled by default |
 
+## 💻 Connection Examples
+
+### Node.js (ioredis)
+
+**Direct Connection:**
+
+```javascript
+const Redis = require("ioredis");
+
+// Connect to Master (Read/Write)
+const master = new Redis({
+  host: "redis-master.railway.internal",
+  port: 6379,
+  password: process.env.REDIS_PASSWORD,
+});
+
+// Connect to Replica (Read-Only)
+const replica = new Redis({
+  host: "redis-replica.railway.internal",
+  port: 6379,
+  password: process.env.REDIS_PASSWORD,
+});
+```
+
+**Sentinel Connection (Recommended for HA):**
+
+```javascript
+const Redis = require("ioredis");
+
+const redis = new Redis({
+  sentinels: [{ host: "redis-sentinel.railway.internal", port: 26379 }],
+  name: "mymaster",
+  password: process.env.REDIS_PASSWORD,
+  sentinelPassword: process.env.REDIS_PASSWORD,
+  // Auto-reconnect on failover
+  retryDelayOnFailover: 100,
+  enableReadyCheck: true,
+});
+
+redis.on("connect", () => console.log("Connected to Redis via Sentinel"));
+redis.on("error", (err) => console.error("Redis error:", err));
+```
+
+### Python (redis-py)
+
+**Direct Connection:**
+
+```python
+import redis
+import os
+
+# Connect to Master (Read/Write)
+master = redis.Redis(
+    host='redis-master.railway.internal',
+    port=6379,
+    password=os.getenv('REDIS_PASSWORD'),
+    decode_responses=True
+)
+
+# Connect to Replica (Read-Only)
+replica = redis.Redis(
+    host='redis-replica.railway.internal',
+    port=6379,
+    password=os.getenv('REDIS_PASSWORD'),
+    decode_responses=True
+)
+```
+
+**Sentinel Connection (Recommended for HA):**
+
+```python
+from redis.sentinel import Sentinel
+import os
+
+sentinel = Sentinel(
+    [('redis-sentinel.railway.internal', 26379)],
+    socket_timeout=0.5,
+    password=os.getenv('REDIS_PASSWORD'),
+    sentinel_kwargs={'password': os.getenv('REDIS_PASSWORD')}
+)
+
+# Get Master connection (Read/Write)
+master = sentinel.master_for(
+    'mymaster',
+    socket_timeout=0.5,
+    password=os.getenv('REDIS_PASSWORD'),
+    decode_responses=True
+)
+
+# Get Replica connection (Read-Only)
+replica = sentinel.slave_for(
+    'mymaster',
+    socket_timeout=0.5,
+    password=os.getenv('REDIS_PASSWORD'),
+    decode_responses=True
+)
+
+# Usage
+master.set('key', 'value')
+print(replica.get('key'))
+```
+
+### Go (go-redis)
+
+**Direct Connection:**
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    "github.com/redis/go-redis/v9"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Connect to Master (Read/Write)
+    master := redis.NewClient(&redis.Options{
+        Addr:     "redis-master.railway.internal:6379",
+        Password: os.Getenv("REDIS_PASSWORD"),
+        DB:       0,
+    })
+
+    // Connect to Replica (Read-Only)
+    replica := redis.NewClient(&redis.Options{
+        Addr:     "redis-replica.railway.internal:6379",
+        Password: os.Getenv("REDIS_PASSWORD"),
+        DB:       0,
+    })
+
+    // Test connection
+    _, err := master.Ping(ctx).Result()
+    if err != nil {
+        panic(err)
+    }
+}
+```
+
+**Sentinel Connection (Recommended for HA):**
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "github.com/redis/go-redis/v9"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Sentinel client with automatic failover
+    rdb := redis.NewFailoverClient(&redis.FailoverOptions{
+        MasterName:       "mymaster",
+        SentinelAddrs:    []string{"redis-sentinel.railway.internal:26379"},
+        Password:         os.Getenv("REDIS_PASSWORD"),
+        SentinelPassword: os.Getenv("REDIS_PASSWORD"),
+        DB:               0,
+    })
+    defer rdb.Close()
+
+    // Test connection
+    pong, err := rdb.Ping(ctx).Result()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println("Connected:", pong)
+
+    // Usage
+    err = rdb.Set(ctx, "key", "value", 0).Err()
+    if err != nil {
+        panic(err)
+    }
+
+    val, err := rdb.Get(ctx, "key").Result()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println("key:", val)
+}
+```
+
+### 🔑 Why Use Sentinel Connection?
+
+| Feature               | Direct Connection          | Sentinel Connection |
+| --------------------- | -------------------------- | ------------------- |
+| **Auto-Failover**     | ❌ Manual reconnect needed | ✅ Automatic        |
+| **Service Discovery** | ❌ Hardcoded host          | ✅ Dynamic          |
+| **High Availability** | ⚠️ Single point of failure | ✅ Full HA          |
+| **Complexity**        | Simple                     | Slightly more setup |
+
+> **Recommendation**: Use **Sentinel Connection** for production workloads to ensure your application automatically handles failover scenarios.
+
 ## Why Deploy Redis HA Cluster on Railway?
 
 Railway is a singular platform to deploy your infrastructure stack. Railway will host your infrastructure so you don't have to deal with configuration, while allowing you to vertically and horizontally scale it.
