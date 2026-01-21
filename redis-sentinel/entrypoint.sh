@@ -22,6 +22,9 @@ fi
 export RAILWAY_PRIVATE_DOMAIN=${RAILWAY_PRIVATE_DOMAIN:-localhost}
 export REDISCLI_AUTH="$REDIS_PASSWORD"
 
+# Graceful shutdown handler
+trap 'redis-cli -p 26379 sentinel failover mymaster; redis-cli -p 26379 shutdown' SIGTERM SIGINT
+
 echo "[INFO] Node Role: SENTINEL"
 echo "[INFO] Master Host: $MASTER_HOST"
 echo "[INFO] Private Domain: $RAILWAY_PRIVATE_DOMAIN"
@@ -32,7 +35,7 @@ MAX_RETRIES=60
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if redis-cli -h "$MASTER_HOST" -p 6379 ping 2>/dev/null | grep -q "PONG"; then
+    if redis-cli -h "$MASTER_HOST" -p 6379 --connect-timeout 5 ping 2>/dev/null | grep -q "PONG"; then
         echo "[OK] Master is ready!"
         break
     fi

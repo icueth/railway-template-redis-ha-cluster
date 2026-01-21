@@ -19,9 +19,16 @@ if [ -z "$MASTER_HOST" ]; then
     exit 1
 fi
 
-# Calculate maxmemory based on available memory (50% of available)
+# Calculate maxmemory based on container limits (cgroup) or available memory
 if [ -z "$REDIS_MAXMEMORY" ]; then
-    if [ -f /proc/meminfo ]; then
+    # Try cgroup v2 limit first, then cgroup v1, then meminfo
+    if [ -f /sys/fs/cgroup/memory.max ] && [ "$(cat /sys/fs/cgroup/memory.max)" != "max" ]; then
+        MEM_LIMIT=$(cat /sys/fs/cgroup/memory.max)
+        REDIS_MAXMEMORY="$((MEM_LIMIT / 2 / 1024))kb"
+    elif [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+        MEM_LIMIT=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+        REDIS_MAXMEMORY="$((MEM_LIMIT / 2 / 1024))kb"
+    elif [ -f /proc/meminfo ]; then
         TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
         REDIS_MAXMEMORY="$((TOTAL_MEM / 2))kb"
     else
@@ -32,6 +39,10 @@ fi
 
 export REDIS_MAXMEMORY
 export RAILWAY_PRIVATE_DOMAIN=${RAILWAY_PRIVATE_DOMAIN:-localhost}
+export REDISCLI_AUTH="$REDIS_PASSWORD"
+
+# Graceful shutdown handler
+trap 'redis-cli shutdown' SIGTERM SIGINT
 
 echo "[INFO] Node Role: REPLICA"
 echo "[INFO] Master Host: $MASTER_HOST"
@@ -43,10 +54,9 @@ echo "[INFO] Waiting for Master to be ready..."
 MAX_RETRIES=60
 RETRY_COUNT=0
 
-export REDISCLI_AUTH="$REDIS_PASSWORD"
-
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if redis-cli -h "$MASTER_HOST" -p 6379 ping 2>/dev/null | grep -q "PONG"; then
+    # Added --connect-timeout to prevent hanging during DNS resolution
+    if redis-cli -h "$MASTER_HOST" -p 6379 --connect-timeout 5 ping 2>/dev/null | grep -q "PONG"; then
         echo "[OK] Master is ready!"
         break
     fi
