@@ -20,6 +20,7 @@ if [ -z "$MASTER_HOST" ]; then
 fi
 
 export RAILWAY_PRIVATE_DOMAIN=${RAILWAY_PRIVATE_DOMAIN:-localhost}
+export REDISCLI_AUTH="$REDIS_PASSWORD"
 
 echo "[INFO] Node Role: SENTINEL"
 echo "[INFO] Master Host: $MASTER_HOST"
@@ -31,7 +32,7 @@ MAX_RETRIES=60
 RETRY_COUNT=0
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if redis-cli -h "$MASTER_HOST" -p 6379 -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q "PONG"; then
+    if redis-cli -h "$MASTER_HOST" -p 6379 ping 2>/dev/null | grep -q "PONG"; then
         echo "[OK] Master is ready!"
         break
     fi

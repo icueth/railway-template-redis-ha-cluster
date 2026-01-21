@@ -21,8 +21,12 @@ fi
 
 # Calculate maxmemory based on available memory (50% of available)
 if [ -z "$REDIS_MAXMEMORY" ]; then
-    TOTAL_MEM=$(cat /proc/meminfo | grep MemTotal | awk '{print $2}')
-    REDIS_MAXMEMORY="$((TOTAL_MEM / 2))kb"
+    if [ -f /proc/meminfo ]; then
+        TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+        REDIS_MAXMEMORY="$((TOTAL_MEM / 2))kb"
+    else
+        REDIS_MAXMEMORY="256mb"
+    fi
     echo "[INFO] Auto-calculated maxmemory: $REDIS_MAXMEMORY"
 fi
 
@@ -39,8 +43,10 @@ echo "[INFO] Waiting for Master to be ready..."
 MAX_RETRIES=60
 RETRY_COUNT=0
 
+export REDISCLI_AUTH="$REDIS_PASSWORD"
+
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if redis-cli -h "$MASTER_HOST" -p 6379 -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q "PONG"; then
+    if redis-cli -h "$MASTER_HOST" -p 6379 ping 2>/dev/null | grep -q "PONG"; then
         echo "[OK] Master is ready!"
         break
     fi

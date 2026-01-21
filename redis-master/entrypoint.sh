@@ -16,8 +16,12 @@ fi
 
 # Calculate maxmemory based on available memory (50% of available)
 if [ -z "$REDIS_MAXMEMORY" ]; then
-    TOTAL_MEM=$(cat /proc/meminfo | grep MemTotal | awk '{print $2}')
-    REDIS_MAXMEMORY="$((TOTAL_MEM / 2))kb"
+    if [ -f /proc/meminfo ]; then
+        TOTAL_MEM=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+        REDIS_MAXMEMORY="$((TOTAL_MEM / 2))kb"
+    else
+        REDIS_MAXMEMORY="256mb"
+    fi
     echo "[INFO] Auto-calculated maxmemory: $REDIS_MAXMEMORY"
 fi
 
